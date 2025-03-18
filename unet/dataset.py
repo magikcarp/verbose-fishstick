@@ -10,11 +10,31 @@ from random import randint
 
 
 class ImageSample:
-    """ Gray-scale image and mask with dimensions [C x W x H] where C is the
-        number of color channels, W is the width of the image, and H is the
-        height of the image. 
+    """ Gray-scale image and mask to be used for machine learning tasks. 
+
+    Gray-scale image and mask with dimensions [C x W x H] where C is the
+    number of color channels, W is the width of the image, and H is the
+    height of the image. Pixels in the image are represented by float values.
+    Values in the image should lie on the open range [0, 1] and values in the
+    mask should be either 0 or 1. There are no internal checks to validate
+    these assumptions.
+
+    Attributes
+    ----------
+        image: torch.Tensor of the sample image
+        mask: torch.Tensor of the mask to the corresponding image
+
+    Methods
+    -------
+        display: shows image and mask using matplotlib
     """
     def __init__(self, image: torch.Tensor, mask: torch.Tensor):
+        """ Initializes with desired image and mask.
+
+        Arguments:
+            image (torch.Tensor): image of sample
+            mask (torch.Tensor): mask associated with image
+        """
         self.image = image
         self.mask = mask
 
@@ -32,7 +52,25 @@ class ImageSample:
         
 
 class FluoCellsDataset(torch.utils.data.Dataset):
+    """ Fluocells dataset.
+
+    Attributes
+    ----------
+        images = list of image names in image directory
+        masks = list of mask names in masks dataset
+        root: string representation of directory path to dataset
+        transforms: torchvision.transforms.Compose 
+    """
     def __init__(self, root: str, transforms: transforms.Compose=None):
+        """ Initializes dataset to read samples.
+
+        Arguments
+        ---------
+            root (str): the relative or absolute path to the parent directory
+                of the dataset
+            transforms (torchvision.transforms.Compose): series of
+                transformations of the data that occur in sequential order
+        """
         self.root = root
         self.transforms = transforms
 
@@ -40,6 +78,21 @@ class FluoCellsDataset(torch.utils.data.Dataset):
         self.masks = list(sorted(os.listdir(os.path.join(root, "masks"))))
 
     def __getitem__(self, index: int) -> ImageSample:
+        """ Retreives the nth image and mask in alphabetical order.
+
+        Image and mask names are retreived from the `images` and `masks`
+        attributes, respectively. Images are read using opencv-python,
+        converted to a grayscale image, converted to a torch.Tensor, and
+        converted from an integer to a float value representation.  
+        
+        Arguments
+        ---------
+            index (int): the nth image and mask
+
+        Returns
+        -------
+            ImageSample : image and mask each encoded in a torch.Tensor    
+        """
         img_path = os.path.join(self.root, "images", self.images[index])
         msk_path = os.path.join(self.root, "masks", self.masks[index])
 
@@ -66,6 +119,7 @@ class FluoCellsDataset(torch.utils.data.Dataset):
 
 
 class Flip:
+    """ Randomly flips image and mask vertically and/or horizontally. """
     def __call__(self, sample: ImageSample) -> ImageSample:
         img, msk = sample.image, sample.mask
         h_flip = randint(0, 1)
@@ -84,6 +138,7 @@ class Flip:
 
 
 class Crop:
+    """ Obtains random crop of the image and mask. """
     def __init__(self, size: int):
         self.size = size
 
@@ -118,9 +173,7 @@ class Brighten:
 
 
 class Fuzz:
-    """ Adds random noise to the image using different distributions. Images
-        can add Gaussian, uniform, or no noise which is determined randomly. 
-    """
+    """ Adds random noise from the Gaussian, uniform, or no distribution. """
     def __call__(self, sample: ImageSample) -> ImageSample:
         img, msk = sample.image, sample.mask
         noise = randint(0, 2)
@@ -141,10 +194,7 @@ class Fuzz:
 
 
 class Cap:
-    """ Ensures values within the image do not exceed the expected bounds of
-        float values on the interval [0, 1]. This should be the last
-        transformation included in the series before training or predictions. 
-    """
+    """ Caps values in image to predefined open range of [0, 1]. """
     def __call__(self, sample: ImageSample) -> ImageSample:
         img = sample.image
         img[img > 1] = 1
