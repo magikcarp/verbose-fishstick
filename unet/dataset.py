@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from random import randint
 
 
-class ImageSample:
+class ImageSample(dict):
     """ Gray-scale image and mask to be used for machine learning tasks. 
 
     Gray-scale image and mask with dimensions [C x W x H] where C is the
@@ -19,10 +19,10 @@ class ImageSample:
     mask should be either 0 or 1. There are no internal checks to validate
     these assumptions.
 
-    Attributes
+    Attributes (stored in dictionary format for DataLoader compatibility)
     ----------
-        image: torch.Tensor of the sample image
-        mask: torch.Tensor of the mask to the corresponding image
+        "image": torch.Tensor of the sample image
+        "mask": torch.Tensor of the mask to the corresponding image
 
     Methods
     -------
@@ -35,8 +35,8 @@ class ImageSample:
             image (torch.Tensor): image of sample
             mask (torch.Tensor): mask associated with image
         """
-        self.image = image
-        self.mask = mask
+        self["image"] = image
+        self["mask"] = mask
 
     def display(self):
         """ Displays the image and mask using matplotlib, primarily useful for 
@@ -45,10 +45,10 @@ class ImageSample:
         plt.figure(figsize=(16, 8))
         plt.subplot(121)
         plt.title("Image")
-        plt.imshow(self.image.transpose(0, 2))
+        plt.imshow(self["image"].transpose(0, 2))
         plt.subplot(122)
         plt.title("Mask")
-        plt.imshow(self.mask.transpose(0, 2))
+        plt.imshow(self["mask"].transpose(0, 2))
         
 
 class FluoCellsDataset(torch.utils.data.Dataset):
@@ -56,10 +56,10 @@ class FluoCellsDataset(torch.utils.data.Dataset):
 
     Attributes
     ----------
-        images = list of image names in image directory
-        masks = list of mask names in masks dataset
+        images: list of image names in image directory
+        masks: list of mask names in masks dataset
         root: string representation of directory path to dataset
-        transforms: torchvision.transforms.Compose 
+        transforms: torchvision.transforms.Compose
     """
     def __init__(self, root: str, transforms: transforms.Compose=None):
         """ Initializes dataset to read samples.
@@ -91,7 +91,7 @@ class FluoCellsDataset(torch.utils.data.Dataset):
 
         Returns
         -------
-            ImageSample : image and mask each encoded in a torch.Tensor    
+            ImageSample: image and mask each encoded in a torch.Tensor    
         """
         img_path = os.path.join(self.root, "images", self.images[index])
         msk_path = os.path.join(self.root, "masks", self.masks[index])
@@ -115,22 +115,49 @@ class FluoCellsDataset(torch.utils.data.Dataset):
         return smpl
 
     def __len__(self):
+        """ Provides the number of samples in the dataset. """
+        return len(self.images)
+
+
+class DapiTifDataset(torch.utils.data.Dataset):
+    """ Dataset for TIF images to be predicted using neural network. 
+
+    Attributes
+    ----------
+        images: list of TIF DAPI images for prediction
+        root: directory housing the DAPI images
+    """
+    def __init__(self, root: str):
+        self.images = list(sorted(os.listdir(os.path.join(root, "DAPI"))))
+        self.root = root
+        
+    def __getitem__(self, index: int) -> torch.Tensor:
+        # TIF color channels max at 64
+        # https://stackoverflow.com/questions/33610825/normalization-in-image-processing
+        img_path = os.path.join(self.root, "DAPI", self.images[index])
+        img = cv2.imread(img_path)
+        img = torch.from_numpy(
+            np.expand_dims(img[:, :, 0], axis=0)
+        ).float().transpose(1, 2) / 64
+        return img
+
+    def __len__(self):
         return len(self.images)
 
 
 class Flip:
     """ Randomly flips image and mask vertically and/or horizontally. """
     def __call__(self, sample: ImageSample) -> ImageSample:
-        img, msk = sample.image, sample.mask
+        img, msk = sample["image"], sample["mask"]
         h_flip = randint(0, 1)
         v_flip = randint(0, 1)
 
         if h_flip:
-            print("H FLIP!")
+            # print("H FLIP!")
             img = torch.flip(img, [1])
             msk = torch.flip(msk, [1])
         if v_flip:
-            print("V FLIP!")
+            # print("V FLIP!")
             img = torch.flip(img, [2])
             msk = torch.flip(msk, [2])
             
@@ -143,13 +170,13 @@ class Crop:
         self.size = size
 
     def __call__(self, sample: ImageSample) -> ImageSample:
-        img, msk = sample.image, sample.mask
+        img, msk = sample["image"], sample["mask"]
         max_w = img.size()[1] - self.size - 1
         max_h = img.size()[2] - self.size - 1
 
         w = randint(0, max_w)
         h = randint(0, max_h)
-        print(f"NEW CORNER: {w}, {h}")
+        # print(f"NEW CORNER: {w}, {h}")
         
         new_img = img[:, w:w + self.size, h:h + self.size]
         new_msk = msk[:, w:w + self.size, h:h + self.size]
@@ -157,17 +184,14 @@ class Crop:
         return ImageSample(new_img, new_msk)
 
 class Brighten:
-    """ Brightens (or darkens) an image by a random constant value. 
-
-
-    """
+    """ Brightens image +- a random constant value. """
     def __init__(self, max_bound: float):
         self.max = max_bound
 
     def __call__(self, sample: ImageSample) -> ImageSample:
-        img, msk = sample.image, sample.mask
-        bright_adjust = (torch.rand(1) - 0.5) * self.max
-        print(f"BRIGHT ADJUST: {bright_adjust}")
+        img, msk = sample["image"], sample["mask"]
+        bright_adjust = ((torch.rand(1) * 2) - 1) * self.max
+        # print(f"BRIGHT ADJUST: {bright_adjust}")
         img = img + bright_adjust 
         return ImageSample(img, msk)
 
@@ -175,29 +199,37 @@ class Brighten:
 class Fuzz:
     """ Adds random noise from the Gaussian, uniform, or no distribution. """
     def __call__(self, sample: ImageSample) -> ImageSample:
-        img, msk = sample.image, sample.mask
+        img, msk = sample["image"], sample["mask"]
         noise = randint(0, 2)
 
         if noise == 2:
-            gaussian_noise = torch.randn(sample.image.shape) * 0.1
-            print("GAUSSIAN")
+            gaussian_noise = torch.randn(sample["image"].shape) * 0.1
+            # print("GAUSSIAN")
             img = img + gaussian_noise
         elif noise == 1:
-            uniform_noise = (torch.rand(sample.image.shape) - 0.5) / 5
-            print("UNIFORM")
+            uniform_noise = (torch.rand(sample["image"].shape) - 0.5) / 5
+            # print("UNIFORM")
             img = img + uniform_noise
         else:
-            print("NO NOISE!")
+            # print("NO NOISE!")
             pass # no noise added
 
         return ImageSample(img, msk)
 
 
 class Cap:
-    """ Caps values in image to predefined open range of [0, 1]. """
+    """ Caps float values in image to predefined open range of [0, 1]. """
     def __call__(self, sample: ImageSample) -> ImageSample:
-        img = sample.image
+        img = sample["image"]
+        # print(f"PRE-CAP MIN {torch.min(img):.2f} MAX {torch.max(img):.2f}")
         img[img > 1] = 1
         img[img < 0] = 0
-        return ImageSample(img, sample.mask)
+        # print(f"POST-CAP MIN {torch.min(img):.2f} MAX {torch.max(img):.2f}")
+        return ImageSample(img, sample["mask"])
+
+
+def show_batch(batched_sample) -> None:
+    """ Displays the batch of images in a batch. """
+
+    pass
 
