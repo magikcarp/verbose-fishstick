@@ -30,7 +30,7 @@ class UNet(nn.Module):
             [UpSample(i, o) for i, o in
               [(1024, 512), (512, 256), (256, 128), (128, 64)]]
         )
-        self.concat = nn.ModuleList([torch.cat() for _ in range(4)])
+        self.concat = nn.ModuleList([Concat() for _ in range(4)])
 
         # Output
         self.last_conv = nn.Conv2d(64, 1, kernel_size=1)
@@ -46,11 +46,11 @@ class UNet(nn.Module):
 
         Arguments
         ---------
-            x (torch.Tensor): input 512 x 512g rayscale image
+            x (torch.Tensor): BATCH_SIZE x 1 x 512 x 512 grayscale image.
 
         Returns
         -------
-            torch.Tensor: mask of the provided image 
+            torch.Tensor: mask of the provided image.
         """
         through_pass = []
         for i in range(len(self.down_conv)):
@@ -66,6 +66,48 @@ class UNet(nn.Module):
         _x = self.sigmoid(_x)
         return _x
 
+    def train_model(
+            self,
+            train_loader: torch.utils.data.DataLoader,
+            n_epochs: int,
+            optimizer: torch.optim.Optimizer,
+            loss_fn: Callable,
+            verbose: bool=False,
+            report_iter: int=25,
+        ) -> None:
+        """ Train the UNet model using the training data. 
+
+        Arguments
+        ---------
+            train_loader (torch.utils.data.DataLoader): training data loader
+            n_epochs (int): the number of training rounds through the dataset
+            optimizer (torch.optim.Optimizer): optimizing function
+            loss_fn (Callable): function to calculate loss
+            verbose (bool): Indicates if function prints. Default is false.
+            report_iter (int): Prints loss every nth batch. Default is 25.
+
+        Returns
+        -------
+            None
+        """
+        self.train() # set the model to training mode
+        for e in range(n_epochs):
+            if verbose:
+                print(f"EPOCH {e+1}")
+            for i, batch in enumerate(train_loader):
+                images = batch["image"]
+                masks = batch["mask"]
+
+                optimizer.zero_grad()
+                y_pred = self(images)
+                loss = loss_fn(y_pred, masks)
+                loss.backward()
+                optimizer.step()
+
+                if verbose and i % report_iter == (report_iter - 1):
+                    print(f"{i}th batch loss: {loss}")
+        return None
+        
 
 class DoubleConvolution(nn.Module):
     """ Neural network layer that performs two convolutions with a 3x3 kernel,
@@ -79,6 +121,7 @@ class DoubleConvolution(nn.Module):
         self.a2 = nn.ReLU()
         
     def forward(self, x: torch.Tensor):
+        """ Forward pass through a double convolution. """
         _x = self.c1(x)
         _x = self.a1(_x)
         _x = self.c2(_x)
@@ -87,50 +130,47 @@ class DoubleConvolution(nn.Module):
 
 
 class DownSample(nn.Module):
+    """ Max pool with a kernel size and stride of 2. """
     def __init__(self):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
     def forward(self, x: torch.Tensor):
+        """ Forward pass through 2D pooling layer. """
         return self.pool(x)
 
 
+class Concat(nn.Module):
+    """ Concatenates two tensors of similar shape along channels. """
+    def foward(self, x: torch.Tensor, contracting_x: torch.Tensor):
+        """ Forward pass through concatenation of two tensors. """
+        return torch.concat([x, contracting_x], dim=1)
+
+
 class UpSample(nn.Module):
+    """ Performs upsampling of data with a kernel size and stride of 2. """
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
         self.up = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
 
     def forward(self, x: torch.Tensor):
+        """ Forward pass through upsampling process. """
         return self.up(x)
 
 
-def train_model(
-        model: nn.Module,
-        loader: torch.utils.data.DataLoader,
-        n_epochs: int,
-        optimizer: torch.optim.Optimizer,
-        loss_fn: Callable,
-        verbose: bool=False,
-        report_iter: int=25,
-    ) -> None:
-    model.train() # set the model to training mode
-    for e in range(n_epochs):
-        if verbose:
-            print(f"EPOCH {e+1}")
-        for i, batch in enumerate(loader):
-            images = batch["image"]
-            masks = batch["mask"]
-
-            optimizer.zero_grad()
-            y_pred = model(images)
-            loss = loss_fn(y_pred, masks)
-            loss.backward()
-            optimizer.step()
-
-            if verbose and i % report_iter == (report_iter - 1):
-                print(f"{i}th batch loss: {loss}")
-        
 def dice_loss(pred: torch.Tensor, target: torch.Tensor, epsilon: float=1e-6):
+    """ Calculate the dice loss between the predicted and target mask.
+
+    Arguments
+    ---------
+        pred (torch.Tensor): the mask predicted by the machine learning model.
+        target (torch.Tensor): the ground truth mask.
+        epsilon (float): optional. Small value to prevent division by zero.
+
+    Returns
+    -------
+        float: calculated dice loss
+    """
     intersection = (pred * target).sum()
     union = pred.sum() + target.sum()
     dice = (2. * intersection + epsilon) / (union + epsilon)
