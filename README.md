@@ -24,7 +24,21 @@ contractive and expansive path in the network. Current goals include:
 ### K mean clustering
 K means clustering is an iterative process of grouping a collection of
 observations into K groups. This operates under the assumption that there
-are at least K groups present within the data. 
+are at least K groups present within the data.
+
+#### Results
+Using the Fluocell dataset, the 2-mean clustering for each image was 
+determined and loss between the predicted and true masks was calcualted. 
+
+DICE LOSS METRICS
+ - MIN: 0.7181707620620728
+ - MAX: 1.0
+ - AVG: 0.9442435503005981
+ - STD: 0.0578955784440040
+
+These results are not great which is not too surprising. Masks produced from
+this process yielded areas with many small speckles, not well differentiated
+cells, and selects artifacts. 
 
 ### W-Net
 The W-Net was inspired by the U-Net and (as the name entails) is two
