@@ -1,10 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-""" Report results of K-means clustering on Fluocell dataset.
+""" Report efficacy of K-means clustering on Fluocell dataset using different
+loss metrics. 
 
-usage:
+Usage:
     python kmc.py
+
+It is expected that this file will be run from the parent directory of the
+repository which includes a `data` directory holding the decompressed
+Fluocell dataset images and masks. 
 """
 
 import torch
@@ -15,11 +20,20 @@ from ml.datasets import FluoCellsDataset
 from ml.losses import dice_loss
 
 def predict_2mean(image: np.ndarray) -> np.ndarray:
+    """ 
+    Performs 2-mean clustering on provided grayscale image. 
+
+    Args: 
+        image (numpy.ndarray): image for analysis
+
+    Returns:
+        numpy.ndarray: segmented image
+    """
     flat = image.reshape((-1, 1))
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 0.9)
     k = 2
     attempts = 10
-    ret, labels, centers = cv2.kmeans(
+    _, labels, centers = cv2.kmeans(
         flat,
         k,
         None,
@@ -31,6 +45,23 @@ def predict_2mean(image: np.ndarray) -> np.ndarray:
     flat_res = centers[labels.flatten()]
     res = flat_res.reshape((image.shape))
     return res
+
+def report_loss_stats(loss_vals: list[float], loss_type: str) -> None:
+    """
+    Prints min, max, avg, and std of loss across a dataset.
+
+    Args:
+        loss_vals (list[float]): measured loss values for each image in dataset
+        loss_type (str): name of method for calculating loss
+
+    Returns:
+        None
+    """
+    print(f"{loss_type} metrics")
+    print(f" - min loss: {np.min(loss_vals)}")
+    print(f" - max loss: {np.max(loss_vals)}")
+    print(f" - avg loss: {np.average(loss_vals)}")
+    print(f" - std loss: {np.std(loss_vals)}")
 
 def main():
     # TODO for each image, calculate the dice loss
@@ -46,11 +77,7 @@ def main():
         loss = dice_loss(torch.from_numpy(msk_pred), torch.from_numpy(msk))
         losses[i] = loss
         print(f"{i}: {loss}")
-    print("METRICS")
-    print(f" - MIN dice loss: {np.min(losses)}")
-    print(f" - MAX dice loss: {np.max(losses)}")
-    print(f" - AVG dice loss: {np.average(losses)}")
-    print(f" - STD dice loss: {np.std(losses)}")
+    report_loss_stats(losses, "Dice loss")
     return None
 
 if __name__ == "__main__":
