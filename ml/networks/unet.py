@@ -10,11 +10,31 @@ from collections.abc import Callable
 
 
 class UNet(nn.Module):
-    """ UNet network for convolving image data. """
+    """ UNet network for convolving image data.
+
+    The number of kernels can be customized if desired. Example network sizes:
+        - UNet : [64, 128, 256, 512, 1024]
+        - SmallUNet : [32, 64, 128, 256, 512]
+        - MiniUNet : [16, 32, 64, 128, 256]
+        - TinyUNet : [8, 16, 32, 64, 128]
+        - DeepUNet : [8, 16, 32, 64, 128, 256, 512, 1024]
+            - Should only be used with very large images due to down sampling
+            (image demnsions are halved after each layer of double convolution)
+    """
     def __init__(self,
                  in_channels: int,
                  out_channels: int,
                  n_layer_kernels: list[int]=[64, 128, 256, 512, 1024]):
+        """ Creates a UNet model with desired number of in and out channels.
+
+        Arguments
+        ---------
+            in_channels (int): number of channels in the original image.
+            out_channels (int): number of desired output channels.
+            n_layer_kernels (list[int]): the number of kernels in each layer of
+                the network. It is highly recommended that values are sequential
+                powers of 2. Default is [64, 128, 256, 512, 1024].
+        """
         super().__init__()
         n_kern = n_layer_kernels.copy() # in case input shouldn't mutate
         n_kern.insert(0, in_channels)
@@ -171,3 +191,21 @@ class UpSample(nn.Module):
     def forward(self, x: torch.Tensor):
         """ Forward pass through upsampling process. """
         return self.up(x)
+
+
+def seed_unet_kernels(first: int, n_layers: int) -> list[int]:
+    """ Constructs list of number of kernels in layer of convolutions.
+
+    The value `first` indicates the first value in the list and subsequent
+    values are the first value multiplied by a power of 2. 
+
+    Arguments
+    ---------
+        first (int): the first value in list of kernels for initial convolution
+        n_layers (int): the number of desired layers in the UNet
+
+    Returns
+    -------
+        list[int] 
+    """
+    return [first * (2**i) for i in range(n_layers)]
