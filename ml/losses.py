@@ -52,8 +52,8 @@ class DiceLoss(Loss):
             float: calculated dice loss
         """
         # calculate dice coefficient
-        intersection = (pred * target).sum(dim=pred.shape[-3:])
-        union = pred.sum(dim=pred.shape[-3:]) + target.sum(dim=pred.shape[-3:])
+        intersection = (pred * target).sum(dim=(-1, -2, -3))
+        union = pred.sum(dim=(-1, -2, -3)) + target.sum(dim=(-1, -2, -3))
         dice_coeff = (2. * intersection + self.eps) / (union + self.eps)
 
         # dice loss = 1 - dice coefficient
@@ -162,7 +162,7 @@ def build_penalty_map(
             Morelli et al. in https://arxiv.org/abs/2103.01141.
 
     Returns:
-        torch.Tensor: weight map. 
+        torch.Tensor: weight map with same dimensions as input mask. 
     """
     y_np = y.squeeze(1).detach().numpy()  # Convert to NumPy for processing
     batch_size, width, height = y_np.shape
