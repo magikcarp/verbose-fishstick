@@ -3,8 +3,6 @@
 Different loss functions. 
 """
 
-from collections.abc import Callable
-
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -12,14 +10,18 @@ from skimage.measure import label
 from scipy.ndimage.morphology import distance_transform_edt
 
 
-class DiceLoss:
+class Loss:
+    pass
+
+
+class DiceLoss(Loss):
     """ 
     Calculate the DICE loss between true and predicted mask. 
 
-    DICE loss is defined as 2 * intersection / union of two images. 
+    DICE loss is defined as (2 * intersection / union) of two images. 
 
     Attributes:
-        e (float, optional): epsilon to prevent division by 0. Default is 1e-6. 
+        eps (float, optional): value prevent division by 0. Default is 1e-6. 
     """
     def __init__(self, epsilon: float=1e-6):
         """
@@ -58,12 +60,29 @@ class DiceLoss:
         return 1 - dice_coeff.mean()
 
 
-class WeightedBCE:
+class WeightedBCE(Loss):
+    """
+    Calculate BCE loss using a weighted mask map. Produces reduced value. 
+
+    Attributes:
+        wc (dict, optional): an optional weight map of classes (0 as background 
+            and 1 as the subject). 
+        w0 (int, optional): weight of distance between cells. Default is 2. 
+        sigma (int, optional): required proximity between cells. Default is 25. 
+    """
     def __init__(self, 
                  wc: dict=None,
-                 w0: int=5,
+                 w0: int=2,
                  sigma: int=25
                  ):
+        """
+        Sets parameters required for calculating weighted BCE.
+
+        Args: 
+            wc (dict, optional)
+            w0 (int, optional)
+            sigma (int, optional)
+        """
         self.wc = wc
         self.w0 = w0
         self.sigma = sigma
@@ -72,11 +91,59 @@ class WeightedBCE:
                  pred: torch.Tensor, 
                  target: torch.Tensor
                  ) -> torch.Tensor:
+        """
+        Calculates the weighted BCE between predicted and target masks.
+
+        Args: 
+            pred (torch.Tensor): predicted mask. 
+            target (torch.Tensor): ground truth mask. 
+        
+        Returns: 
+            torch.Tensor: computed BCE loss. 
+        """
         unweighted_bce = F.binary_cross_entropy(pred, target, reduction='none')
-        wm
+        wm = build_penalty_map(target, wc=self.wc, w0=self.w0, sigma=self.sigma)
+        weighted_bce = unweighted_bce * wm
+        return weighted_bce.mean()
 
 
-def build_pixel_penalty_map(
+class SumLoss(Loss):
+    """
+    Sums the loss function means for a given prediction and target. 
+
+    Attributes:
+        losses (tuple[Loss]): collection of loss functions. 
+    """
+    def __init__(self, *loss_fns: Loss):
+        """
+        Initializes object for summing loss functions. 
+
+        Args: 
+            loss_fns: (tuple[Loss]): series of functions for total loss. 
+        """
+        self.losses = loss_fns
+
+    def __call__(self, 
+                 pred: torch.Tensor, 
+                 target: torch.Tensor
+                 ) -> torch.Tensor:
+        """
+        Calculates the summed loss for all previously included loss functions. 
+
+        Args:
+            pred (torch.Tensor): predicted mask. 
+            target (torch.Tensor): ground truth mask. 
+
+        Returns: 
+            torch.Tensor: total calculated loss. 
+        """
+        out_loss = 0
+        for loss in self.losses:
+            out_loss += loss(pred, target)
+        return out_loss
+    
+
+def build_penalty_map(
     y: torch.Tensor, 
     wc: dict=None, 
     w0: int=10, 
@@ -88,14 +155,14 @@ def build_pixel_penalty_map(
     here: https://stackoverflow.com/questions/50255438/pixel-wise-loss-weight-for-image-segmentation-in-keras/
 
     Args:
-        mask (torch.Tensor): original mask in dataset.
+        mask (torch.Tensor): original mask in dataset. 
         wc (dict): dictionary of class weights.
         w0 (int): border weight parameter. Default is 10. 
         sigma (int): border width parameter. Default is 25 as described by
             Morelli et al. in https://arxiv.org/abs/2103.01141.
 
     Returns:
-        torch.Tensor: weight map
+        torch.Tensor: weight map. 
     """
     y_np = y.squeeze(1).detach().numpy()  # Convert to NumPy for processing
     batch_size, width, height = y_np.shape
