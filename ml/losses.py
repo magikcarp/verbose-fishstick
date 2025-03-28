@@ -26,10 +26,10 @@ class DiceLoss:
         Initializes instance for calculating DICE loss.
 
         Args:
-            e (float, optional): epsilon to prevent division by 0. 
+            eps (float, optional): epsilon to prevent division by 0. 
                 Default is 1e-6. 
         """
-        self.e = epsilon
+        self.eps = epsilon
 
     def __call__(self, 
                  pred: torch.Tensor, 
@@ -52,18 +52,28 @@ class DiceLoss:
         # calculate dice coefficient
         intersection = (pred * target).sum(dim=pred.shape[-3:])
         union = pred.sum(dim=pred.shape[-3:]) + target.sum(dim=pred.shape[-3:])
-        dice_coeff = (2. * intersection + self.e) / (union + self.e)
+        dice_coeff = (2. * intersection + self.eps) / (union + self.eps)
 
         # dice loss = 1 - dice coefficient
         return 1 - dice_coeff.mean()
 
 
 class WeightedBCE:
+    def __init__(self, 
+                 wc: dict=None,
+                 w0: int=5,
+                 sigma: int=25
+                 ):
+        self.wc = wc
+        self.w0 = w0
+        self.sigma = sigma
+
     def __call__(self, 
                  pred: torch.Tensor, 
                  target: torch.Tensor
                  ) -> torch.Tensor:
         unweighted_bce = F.binary_cross_entropy(pred, target, reduction='none')
+        wm
 
 
 def build_pixel_penalty_map(
