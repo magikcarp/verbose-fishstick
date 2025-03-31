@@ -3,18 +3,18 @@
 Different loss functions. 
 """
 
-import torch
-import torch.nn.functional as F
 import numpy as np
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from scipy.stats import norm
 from skimage.measure import label
 from scipy.ndimage.morphology import distance_transform_edt
 
 
-class Loss:
-    pass
-
-
-class DiceLoss(Loss):
+class DiceLoss(nn.Module):
     """ 
     Calculate the DICE loss between true and predicted mask. 
 
@@ -22,6 +22,9 @@ class DiceLoss(Loss):
 
     Attributes:
         eps (float, optional): value prevent division by 0. Default is 1e-6. 
+
+    Methods:
+        forward
     """
     def __init__(self, epsilon: float=1e-6):
         """
@@ -33,10 +36,10 @@ class DiceLoss(Loss):
         """
         self.eps = epsilon
 
-    def __call__(self, 
-                 pred: torch.Tensor, 
-                 target: torch.Tensor, 
-                 ) -> torch.Tensor:
+    def forward(self, 
+                pred: torch.Tensor, 
+                target: torch.Tensor, 
+                ) -> torch.Tensor:
         """
         Calculate the dice loss between the predicted and target mask. 
 
@@ -60,7 +63,7 @@ class DiceLoss(Loss):
         return 1 - dice_coeff.mean()
 
 
-class WeightedBCE(Loss):
+class WeightedBCE(nn.Module):
     """
     Calculate BCE loss using a weighted mask map. Produces reduced value. 
 
@@ -87,10 +90,10 @@ class WeightedBCE(Loss):
         self.w0 = w0
         self.sigma = sigma
 
-    def __call__(self, 
-                 pred: torch.Tensor, 
-                 target: torch.Tensor
-                 ) -> torch.Tensor:
+    def forward(self, 
+                pred: torch.Tensor, 
+                target: torch.Tensor
+                ) -> torch.Tensor:
         """
         Calculates the weighted BCE between predicted and target masks.
 
@@ -107,14 +110,14 @@ class WeightedBCE(Loss):
         return weighted_bce.mean()
 
 
-class SumLoss(Loss):
+class SumLoss(nn.Module):
     """
     Sums the loss function means for a given prediction and target. 
 
     Attributes:
         losses (tuple[Loss]): collection of loss functions. 
     """
-    def __init__(self, *loss_fns: Loss):
+    def __init__(self, *loss_fns: nn.Module):
         """
         Initializes object for summing loss functions. 
 
@@ -123,10 +126,10 @@ class SumLoss(Loss):
         """
         self.losses = loss_fns
 
-    def __call__(self, 
-                 pred: torch.Tensor, 
-                 target: torch.Tensor
-                 ) -> torch.Tensor:
+    def forward(self, 
+                pred: torch.Tensor, 
+                target: torch.Tensor
+                ) -> torch.Tensor:
         """
         Calculates the summed loss for all previously included loss functions. 
 
@@ -143,13 +146,82 @@ class SumLoss(Loss):
         return out_loss
     
 
+class NCutLoss(nn.Module):
+    """
+    Calculate the soft-N-cut loss for the encoding portion of a W-Net network. 
+
+    Attributes:
+        radius (int): radius in interaction term as # of pixels
+        shape_std (float): STD of the spatial Gaussian interaction term
+        pixel_std (float): STD of the pixel value Gaussian interaction term
+        kernel (torch.Tensor): Gaussian filter kernel
+
+    Implementation greatly inspired by https://github.com/Guru-Deep-Singh/Group-31-W-Net-A-Deep-Model-for-Fully-Unsupervised-Image-Segmentation
+    """
+    def __init__(self, 
+                 radius: int=5,
+                 shape_std: float=4, 
+                 pixel_std: float=10):
+        """
+        Initialize oject for calculating the loss. 
+
+        Args: 
+            radius (int)
+            shape_std (float)
+            pixel_std (float)
+        """
+        x_2 = np.linspace(-radius, radius, 2*radius+1) ** 2
+        dist = np.sqrt(x_2.reshape(-1, 1) + x_2.reshape(1, -1)) / shape_std
+        kernel = norm.pdf(dist) / norm.pdf(0)
+        kernel = torch.from_numpy(kernel.astype(np.float32))
+        kernel = kernel.view((1, 1, kernel.shape[0], kernel.shape[1]))
+
+        self.radius = radius
+        self.shape_std = shape_std
+        self.pixel_std = pixel_std
+        self.kernel = kernel
+
+    def forward(self, 
+                pred: torch.Tensor, 
+                target: torch.Tensor
+                ) -> torch.Tensor:
+        """
+        Forward pass to calculate soft-N-cut loss. 
+
+        Args:
+            pred (torch.Tensor): predicted mask. 
+            target (torch.Tensor): ground truth mask. 
+
+        Returns: 
+            torch.Tensor: calculated loss. 
+        """
+        n_classes = target.shape[1]
+        loss = 0
+
+        for k in range(n_classes):
+            k_probs = pred[:, k, :, :].unsqueeze(1) # retain # of dimensions
+            mean = torch.mean(pred * k_probs, dim=(2, 3), keepdim=True) / \
+                torch.add(torch.mean(k_probs, dim=(2, 3), keepdim=True), 1e-5)
+            diff = (pred - mean).pow(2).sum(dim=1).unsqueeze(1)
+
+            # Weight the loss by the difference from the class average.
+            weights = torch.exp(diff.pow(2).mul(-1 / self.pixel_std ** 2))
+
+            numerator = torch.sum(k_probs * F.conv2d(k_probs * weights, self.kernel, padding=self.radius))
+            denominator = torch.sum(k_probs * F.conv2d(weights, self.kernel, padding=self.radius))
+            loss += nn.L1Loss()(numerator / torch.add(denominator, 1e-6), torch.zeros_like(numerator))
+
+        return n_classes - loss
+
+
 def build_penalty_map(
     y: torch.Tensor, 
     wc: dict=None, 
     w0: int=10, 
     sigma: int=25
 ) -> torch.Tensor:
-    """ Creates a mask that emphasizes the space between nearby cells.
+    """ 
+    Creates a mask that emphasizes the space between nearby cells.
 
     Implementation of this was heavily inspired by StackOverflow discussion
     here: https://stackoverflow.com/questions/50255438/pixel-wise-loss-weight-for-image-segmentation-in-keras/
