@@ -34,6 +34,7 @@ class DiceLoss(nn.Module):
             eps (float, optional): epsilon to prevent division by 0. 
                 Default is 1e-6. 
         """
+        super(DiceLoss, self).__init__()
         self.eps = epsilon
 
     def forward(self, 
@@ -86,6 +87,7 @@ class WeightedBCE(nn.Module):
             w0 (int, optional)
             sigma (int, optional)
         """
+        super(WeightedBCE, self).__init__()
         self.wc = wc
         self.w0 = w0
         self.sigma = sigma
@@ -124,6 +126,7 @@ class SumLoss(nn.Module):
         Args: 
             loss_fns: (tuple[Loss]): series of functions for total loss. 
         """
+        super(SumLoss, self).__init__()
         self.losses = loss_fns
 
     def forward(self, 
@@ -170,6 +173,8 @@ class NCutLoss(nn.Module):
             shape_std (float)
             pixel_std (float)
         """
+        super(NCutLoss, self).__init__()
+
         x_2 = np.linspace(-radius, radius, 2*radius+1) ** 2
         dist = np.sqrt(x_2.reshape(-1, 1) + x_2.reshape(1, -1)) / shape_std
         kernel = norm.pdf(dist) / norm.pdf(0)

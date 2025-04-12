@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.nn.functional import mse_loss
 
 from .unet import UNet
-from losses import NCutLoss
+from ..losses import NCutLoss
 
 class WNet(nn.Module):
     """
@@ -49,7 +49,7 @@ class WNet(nn.Module):
         segmentation = self.enc_unet(x)
         reconstruction = self.dec_unet(segmentation)
         return segmentation, reconstruction
-    
+    # TODO accept val set, return dict with epoch averaged losses
     def train_model(
             self,
             train_loader: torch.utils.data.DataLoader,

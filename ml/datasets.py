@@ -10,7 +10,8 @@ from random import randint
 
 
 class ImageSample(dict):
-    """ Gray-scale image and mask to be used for machine learning tasks. 
+    """ 
+    Gray-scale image and mask to be used for machine learning tasks. 
 
     Gray-scale image and mask with dimensions [C x W x H] where C is the
     number of color channels, W is the width of the image, and H is the
@@ -19,13 +20,11 @@ class ImageSample(dict):
     mask should be either 0 or 1. There are no internal checks to validate
     these assumptions.
 
-    Attributes (stored in dictionary format for DataLoader compatibility)
-    ----------
+    Attributes (stored in dictionary format for DataLoader compatibility):
         "image": torch.Tensor of the sample image
         "mask": torch.Tensor of the mask to the corresponding image
 
     Methods
-    -------
         display: shows image and mask using matplotlib
     """
     def __init__(self, image: torch.Tensor, mask: torch.Tensor):
@@ -52,20 +51,20 @@ class ImageSample(dict):
         
 
 class FluoCellsDataset(torch.utils.data.Dataset):
-    """ Fluocells dataset.
+    """ 
+    Fluocells dataset.
 
-    Attributes
-    ----------
+    Attributes:
         images: list of image names in image directory
         masks: list of mask names in masks dataset
         root: string representation of directory path to dataset
         transforms: torchvision.transforms.Compose
     """
     def __init__(self, root: str, transforms: transforms.Compose=None):
-        """ Initializes dataset to read samples.
+        """ 
+        Initializes dataset to read samples.
 
-        Arguments
-        ---------
+        Args:
             root (str): the relative or absolute path to the parent directory
                 of the dataset
             transforms (torchvision.transforms.Compose): series of
@@ -78,19 +77,18 @@ class FluoCellsDataset(torch.utils.data.Dataset):
         self.masks = list(sorted(os.listdir(os.path.join(root, "masks"))))
 
     def __getitem__(self, index: int) -> ImageSample:
-        """ Retreives the nth image and mask in alphabetical order.
+        """ 
+        Retreives the nth image and mask in alphabetical order.
 
         Image and mask names are retreived from the `images` and `masks`
         attributes, respectively. Images are read using opencv-python,
         converted to a grayscale image, converted to a torch.Tensor, and
         converted from an integer to a float value representation.  
         
-        Arguments
-        ---------
+        Args:
             index (int): the nth image and mask
 
-        Returns
-        -------
+        Returns:
             ImageSample: image and mask each encoded in a torch.Tensor    
         """
         img_path = os.path.join(self.root, "images", self.images[index])
@@ -120,10 +118,10 @@ class FluoCellsDataset(torch.utils.data.Dataset):
 
 
 class DapiTifDataset(torch.utils.data.Dataset):
-    """ Dataset for TIF images to be predicted using neural network. 
+    """ 
+    Dataset for TIF images to be predicted using neural network. 
 
-    Attributes
-    ----------
+    Attributes:
         images: list of TIF DAPI images for prediction
         root: directory housing the DAPI images
     """
@@ -226,10 +224,3 @@ class Cap:
         img[img < 0] = 0
         # print(f"POST-CAP MIN {torch.min(img):.2f} MAX {torch.max(img):.2f}")
         return ImageSample(img, sample["mask"])
-
-
-def show_batch(batched_sample) -> None:
-    """ Displays the batch of images in a batch. """
-
-    pass
-
